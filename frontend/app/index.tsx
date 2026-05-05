@@ -23,6 +23,40 @@ import { Ionicons } from "@expo/vector-icons";
 type Voice = Speech.Voice;
 type Status = "idle" | "speaking" | "paused";
 
+// Limite di caratteri per chiamata a Speech.speak (limite nativo di expo-speech è 4000)
+const CHUNK_LIMIT = 3800;
+
+/**
+ * Divide un testo lungo in pezzi da leggere in sequenza,
+ * cercando di tagliare su confini di frase (. ! ? ; \n) per una lettura naturale.
+ */
+function splitIntoChunks(text: string, maxLen: number = CHUNK_LIMIT): string[] {
+  const clean = text.trim();
+  if (clean.length <= maxLen) return [clean];
+
+  const chunks: string[] = [];
+  let remaining = clean;
+
+  while (remaining.length > maxLen) {
+    let slice = remaining.slice(0, maxLen);
+    // cerca l'ultimo confine naturale (in ordine di preferenza)
+    const breakers = [". ", "! ", "? ", "\n", "; ", ", ", " "];
+    let cutAt = -1;
+    for (const b of breakers) {
+      const idx = slice.lastIndexOf(b);
+      if (idx > maxLen * 0.5) {
+        cutAt = idx + b.length;
+        break;
+      }
+    }
+    if (cutAt === -1) cutAt = maxLen;
+    chunks.push(remaining.slice(0, cutAt).trim());
+    remaining = remaining.slice(cutAt).trim();
+  }
+  if (remaining.length > 0) chunks.push(remaining);
+  return chunks;
+}
+
 export default function Index() {
   const [text, setText] = useState<string>("");
   const [status, setStatus] = useState<Status>("idle");
@@ -31,6 +65,10 @@ export default function Index() {
   const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null);
   const [voiceModalVisible, setVoiceModalVisible] = useState<boolean>(false);
   const [loadingVoices, setLoadingVoices] = useState<boolean>(true);
+
+  // Coda di chunk da leggere in sequenza per gestire testi lunghi (>4000 caratteri)
+  const queueRef = React.useRef<string[]>([]);
+  const queueIndexRef = React.useRef<number>(0);
 
   const loadVoices = useCallback(async () => {
     try {
@@ -61,6 +99,47 @@ export default function Index() {
     };
   }, [loadVoices]);
 
+  const speakChunk = useCallback(
+    (chunk: string, isLast: boolean) => {
+      Speech.speak(chunk, {
+        language: "it-IT",
+        rate: rate,
+        pitch: 1.0,
+        voice: selectedVoice?.identifier,
+        onStart: () => setStatus("speaking"),
+        onDone: () => {
+          if (isLast) {
+            setStatus("idle");
+            queueRef.current = [];
+            queueIndexRef.current = 0;
+          } else {
+            // passa al prossimo chunk
+            queueIndexRef.current += 1;
+            const next = queueRef.current[queueIndexRef.current];
+            const last =
+              queueIndexRef.current === queueRef.current.length - 1;
+            if (next) speakChunk(next, last);
+          }
+        },
+        onStopped: () => {
+          setStatus("idle");
+          queueRef.current = [];
+          queueIndexRef.current = 0;
+        },
+        onError: () => {
+          setStatus("idle");
+          queueRef.current = [];
+          queueIndexRef.current = 0;
+          Alert.alert(
+            "Errore",
+            "Impossibile leggere il testo. Riprova o cambia voce."
+          );
+        },
+      });
+    },
+    [rate, selectedVoice]
+  );
+
   const handleSpeak = async () => {
     if (!text.trim()) {
       Alert.alert(
@@ -84,22 +163,11 @@ export default function Index() {
     // Se sta già parlando, non fare nulla
     if (status === "speaking") return;
 
-    Speech.speak(text, {
-      language: "it-IT",
-      rate: rate,
-      pitch: 1.0,
-      voice: selectedVoice?.identifier,
-      onStart: () => setStatus("speaking"),
-      onDone: () => setStatus("idle"),
-      onStopped: () => setStatus("idle"),
-      onError: () => {
-        setStatus("idle");
-        Alert.alert(
-          "Errore",
-          "Impossibile leggere il testo. Riprova o cambia voce."
-        );
-      },
-    });
+    // Divide il testo in chunk per rispettare il limite di 4000 caratteri di expo-speech
+    const chunks = splitIntoChunks(text);
+    queueRef.current = chunks;
+    queueIndexRef.current = 0;
+    speakChunk(chunks[0], chunks.length === 1);
   };
 
   const handlePause = async () => {
@@ -114,6 +182,8 @@ export default function Index() {
   };
 
   const handleStop = async () => {
+    queueRef.current = [];
+    queueIndexRef.current = 0;
     await Speech.stop();
     setStatus("idle");
   };
