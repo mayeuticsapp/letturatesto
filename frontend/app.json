@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "Leggi Testo",
+    "slug": "leggi-testo",
+    "owner": "pantheonai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "leggitesto",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
