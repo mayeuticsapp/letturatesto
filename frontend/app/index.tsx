@@ -18,7 +18,6 @@ import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import * as Clipboard from "expo-clipboard";
 import Slider from "@react-native-community/slider";
-import { Ionicons } from "@expo/vector-icons";
 
 type Voice = Speech.Voice;
 type Status = "idle" | "speaking" | "paused";
@@ -28,7 +27,7 @@ const CHUNK_LIMIT = 3800;
 
 /**
  * Divide un testo lungo in pezzi da leggere in sequenza,
- * cercando di tagliare su confini di frase (. ! ? ; \n) per una lettura naturale.
+ * cercando di tagliare su confini di frase per una lettura naturale.
  */
 function splitIntoChunks(text: string, maxLen: number = CHUNK_LIMIT): string[] {
   const clean = text.trim();
@@ -38,8 +37,7 @@ function splitIntoChunks(text: string, maxLen: number = CHUNK_LIMIT): string[] {
   let remaining = clean;
 
   while (remaining.length > maxLen) {
-    let slice = remaining.slice(0, maxLen);
-    // cerca l'ultimo confine naturale (in ordine di preferenza)
+    const slice = remaining.slice(0, maxLen);
     const breakers = [". ", "! ", "? ", "\n", "; ", ", ", " "];
     let cutAt = -1;
     for (const b of breakers) {
@@ -57,6 +55,21 @@ function splitIntoChunks(text: string, maxLen: number = CHUNK_LIMIT): string[] {
   return chunks;
 }
 
+// Simboli Unicode usati al posto delle icone (per evitare problemi di caricamento font)
+const SYM = {
+  chat: "💬",
+  clipboard: "📋",
+  trash: "🗑",
+  play: "▶",
+  pause: "❚❚",
+  stop: "■",
+  speed: "⚡",
+  mic: "🎙",
+  chevron: "›",
+  check: "✓",
+  close: "✕",
+};
+
 export default function Index() {
   const [text, setText] = useState<string>("");
   const [status, setStatus] = useState<Status>("idle");
@@ -73,13 +86,11 @@ export default function Index() {
   const loadVoices = useCallback(async () => {
     try {
       const all = await Speech.getAvailableVoicesAsync();
-      // Filtra solo voci italiane
       const italian = all.filter((v) =>
         v.language?.toLowerCase().startsWith("it")
       );
       setVoices(italian);
       if (italian.length > 0) {
-        // Preferisci una voce di qualità "Enhanced" se disponibile
         const enhanced = italian.find(
           (v) => v.quality === Speech.VoiceQuality.Enhanced
         );
@@ -113,7 +124,6 @@ export default function Index() {
             queueRef.current = [];
             queueIndexRef.current = 0;
           } else {
-            // passa al prossimo chunk
             queueIndexRef.current += 1;
             const next = queueRef.current[queueIndexRef.current];
             const last =
@@ -149,7 +159,6 @@ export default function Index() {
       return;
     }
 
-    // Se in pausa, riprendi
     if (status === "paused") {
       try {
         await Speech.resume();
@@ -160,10 +169,8 @@ export default function Index() {
       }
     }
 
-    // Se sta già parlando, non fare nulla
     if (status === "speaking") return;
 
-    // Divide il testo in chunk per rispettare il limite di 4000 caratteri di expo-speech
     const chunks = splitIntoChunks(text);
     queueRef.current = chunks;
     queueIndexRef.current = 0;
@@ -175,7 +182,6 @@ export default function Index() {
       await Speech.pause();
       setStatus("paused");
     } catch {
-      // su alcuni dispositivi pause non è supportato, ferma e basta
       await Speech.stop();
       setStatus("idle");
     }
@@ -228,7 +234,6 @@ export default function Index() {
         onPress={() => {
           setSelectedVoice(item);
           setVoiceModalVisible(false);
-          // Anteprima breve della voce
           Speech.stop();
           Speech.speak("Ciao, sono la tua voce.", {
             language: "it-IT",
@@ -249,7 +254,7 @@ export default function Index() {
           </Text>
         </View>
         {isSelected && (
-          <Ionicons name="checkmark-circle" size={22} color="#25D366" />
+          <Text style={styles.checkMark}>{SYM.check}</Text>
         )}
       </TouchableOpacity>
     );
@@ -274,7 +279,7 @@ export default function Index() {
           {/* Header */}
           <View style={styles.header} testID="app-header">
             <View style={styles.logoBadge}>
-              <Ionicons name="chatbubble-ellipses" size={22} color="#fff" />
+              <Text style={styles.logoEmoji}>{SYM.chat}</Text>
             </View>
             <View>
               <Text style={styles.appTitle}>Leggi Messaggi</Text>
@@ -325,7 +330,7 @@ export default function Index() {
                 style={styles.smallBtn}
                 onPress={handlePaste}
               >
-                <Ionicons name="clipboard-outline" size={18} color="#25D366" />
+                <Text style={styles.smallBtnIcon}>{SYM.clipboard}</Text>
                 <Text style={styles.smallBtnText}>Incolla</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -334,11 +339,14 @@ export default function Index() {
                 onPress={handleClear}
                 disabled={!text}
               >
-                <Ionicons
-                  name="trash-outline"
-                  size={18}
-                  color={text ? "#ef4444" : "#4b5563"}
-                />
+                <Text
+                  style={[
+                    styles.smallBtnIcon,
+                    { color: text ? "#ef4444" : "#4b5563" },
+                  ]}
+                >
+                  {SYM.trash}
+                </Text>
                 <Text
                   style={[
                     styles.smallBtnText,
@@ -361,17 +369,9 @@ export default function Index() {
             ]}
             onPress={isSpeaking ? handlePause : handleSpeak}
           >
-            <Ionicons
-              name={
-                isSpeaking
-                  ? "pause"
-                  : isPaused
-                  ? "play"
-                  : "play"
-              }
-              size={32}
-              color="#0b141a"
-            />
+            <Text style={styles.mainButtonIcon}>
+              {isSpeaking ? SYM.pause : SYM.play}
+            </Text>
             <Text style={styles.mainButtonText}>
               {isSpeaking ? "Pausa" : isPaused ? "Riprendi" : "Leggi"}
             </Text>
@@ -387,11 +387,14 @@ export default function Index() {
             onPress={handleStop}
             disabled={isIdle}
           >
-            <Ionicons
-              name="stop"
-              size={18}
-              color={isIdle ? "#4b5563" : "#fff"}
-            />
+            <Text
+              style={[
+                styles.stopButtonIcon,
+                { color: isIdle ? "#4b5563" : "#fff" },
+              ]}
+            >
+              {SYM.stop}
+            </Text>
             <Text
               style={[
                 styles.stopButtonText,
@@ -406,7 +409,7 @@ export default function Index() {
           <View style={styles.controlCard}>
             <View style={styles.controlHeader}>
               <View style={styles.controlTitleRow}>
-                <Ionicons name="speedometer-outline" size={18} color="#25D366" />
+                <Text style={styles.controlIcon}>{SYM.speed}</Text>
                 <Text style={styles.controlTitle}>Velocità</Text>
               </View>
               <Text style={styles.controlValue}>
@@ -440,10 +443,10 @@ export default function Index() {
           >
             <View style={styles.controlHeader}>
               <View style={styles.controlTitleRow}>
-                <Ionicons name="mic-outline" size={18} color="#25D366" />
+                <Text style={styles.controlIcon}>{SYM.mic}</Text>
                 <Text style={styles.controlTitle}>Voce italiana</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <Text style={styles.chevronIcon}>{SYM.chevron}</Text>
             </View>
             {loadingVoices ? (
               <ActivityIndicator color="#25D366" style={{ marginTop: 8 }} />
@@ -481,8 +484,9 @@ export default function Index() {
               <TouchableOpacity
                 testID="close-voice-modal"
                 onPress={() => setVoiceModalVisible(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={26} color="#fff" />
+                <Text style={styles.closeIcon}>{SYM.close}</Text>
               </TouchableOpacity>
             </View>
             {voices.length === 0 ? (
@@ -527,6 +531,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#25D366",
     alignItems: "center",
     justifyContent: "center",
+  },
+  logoEmoji: {
+    fontSize: 22,
   },
   appTitle: {
     color: "#fff",
@@ -620,6 +627,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1f2c34",
   },
+  smallBtnIcon: {
+    fontSize: 16,
+    color: "#25D366",
+  },
   smallBtnText: {
     color: "#25D366",
     fontSize: 14,
@@ -634,15 +645,14 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     borderRadius: 18,
     marginBottom: 10,
-    shadowColor: "#25D366",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
   },
   mainButtonActive: {
     backgroundColor: "#f59e0b",
-    shadowColor: "#f59e0b",
+  },
+  mainButtonIcon: {
+    color: "#0b141a",
+    fontSize: 24,
+    fontWeight: "900",
   },
   mainButtonText: {
     color: "#0b141a",
@@ -663,8 +673,11 @@ const styles = StyleSheet.create({
   stopButtonDisabled: {
     backgroundColor: "#111b21",
   },
+  stopButtonIcon: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
   stopButtonText: {
-    color: "#fff",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -686,6 +699,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
+  controlIcon: {
+    fontSize: 16,
+  },
   controlTitle: {
     color: "#e5e7eb",
     fontSize: 15,
@@ -696,6 +712,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     maxWidth: 200,
+  },
+  chevronIcon: {
+    color: "#9ca3af",
+    fontSize: 22,
+    fontWeight: "300",
   },
   slider: {
     marginTop: 12,
@@ -757,6 +778,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  closeIcon: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "300",
+    paddingHorizontal: 4,
+  },
   voiceItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -781,5 +808,10 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontSize: 12,
     marginTop: 2,
+  },
+  checkMark: {
+    color: "#25D366",
+    fontSize: 22,
+    fontWeight: "900",
   },
 });
