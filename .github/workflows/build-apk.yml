@@ -24,7 +24,7 @@ jobs:
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+          token: ${{ secrets.TOKEN_LEGGI_TESTO }}
 
       - name: Install dependencies
         working-directory: frontend
