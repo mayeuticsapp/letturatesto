@@ -48,8 +48,12 @@ async def create_status_check(input: StatusCheckCreate):
     return status_obj
 
 @api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
+async def get_status_checks(limit: int = 100, skip: int = 0):
+    cursor = db.status_checks.find(
+        {},
+        {"_id": 0, "id": 1, "client_name": 1, "timestamp": 1}
+    ).skip(skip).limit(limit)
+    status_checks = await cursor.to_list(length=limit)
     return [StatusCheck(**status_check) for status_check in status_checks]
 
 # Include the router in the main app
